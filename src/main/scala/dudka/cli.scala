@@ -11,6 +11,7 @@ import scala.language.experimental.macros
 import scala.reflect.ClassTag
 import scala.util.Try
 
+
 object cli {
 
   def apply[T: CliParser](args: Seq[String]): Either[String, T] =
@@ -21,10 +22,14 @@ object cli {
 
   trait CliParser[I] {
     def parse(value: Seq[String], meta: Option[Meta]): Either[String, I]
-    def canHasArgs: Boolean = true
+    def canHaveArgs: Boolean = true
   }
 
-  final case class Meta(longName: String, description: String, default: Option[Any])
+  final case class Meta(longName: String, description: String, default: Option[Any], separator: Option[String])
+
+  class separator(separator: String) extends StaticAnnotation with Serializable {
+    override def toString: String = separator
+  }
 
   class doc(doc: String) extends StaticAnnotation with Serializable {
     override def toString: String = doc
@@ -54,9 +59,10 @@ object cli {
           val shortName   = getAnnotation[name.short](param.annotations).getOrElse(param.label)
           val longName    = getAnnotation[name.long](param.annotations).getOrElse(param.label)
           val description = getAnnotation[doc](param.annotations).getOrElse("")
+          val separator   = getAnnotation[separator](param.annotations)
           (
-            cliOptions.addOption(shortName, longName, param.typeclass.canHasArgs, description),
-            metadata + (shortName -> Meta(longName, description, param.default))
+            cliOptions.addOption(shortName, longName, param.typeclass.canHaveArgs, description),
+            metadata + (shortName -> Meta(longName, description, param.default, separator))
           )
       }
 
@@ -73,11 +79,6 @@ object cli {
           }.left.map(_.mkString("\n\t"))
       )
     }
-
-    private def getAnnotation[T <: StaticAnnotation: ClassTag](annotations: Seq[Any]): Option[String] =
-      annotations.collectFirst { case a: T => a.toString }
-
-    def dispatch[T: Dispatchable](sealedTrait: SealedTrait[Typeclass, T]): CliParser[T] = ???
 
     implicit val _string: CliParser[String] = right[String]((s, _) => Right(s))
 
@@ -102,7 +103,7 @@ object cli {
     implicit val _bool: CliParser[Boolean] = new CliParser[Boolean] {
       override def parse(value: Seq[String], meta: Option[Meta]): Either[String, Boolean] =
         Right(value.nonEmpty)
-      override def canHasArgs: Boolean = false
+      override def canHaveArgs: Boolean = false
     }
 
     implicit val _localDate: CliParser[LocalDate] =
@@ -124,6 +125,15 @@ object cli {
       else implicitly[CliParser[A]].parse(value, meta).right.map(Option(_))
     }
 
+    implicit def _seq[A: CliParser]: CliParser[Seq[A]] =
+      right[Seq[A]] { (v, m) =>
+        m.separator.map(v.split(_).toSeq).getOrElse(Seq(v))
+          .map(s => implicitly[CliParser[A]].parse(Seq(s), Some(m))).partition(_.isLeft) match {
+          case (Nil, values) => Right[String, Seq[A]](for (Right(vl) <- values.view) yield vl)
+          case (errors, _) => Left(for (Left(e) <- errors.view) yield e).left.map(_.mkString(","))
+        }
+      }
+
     private def right[I](f: (String, Meta) => Either[String, I]): CliParser[I] = { (value, meta) =>
       for {
         m       <- meta.toRight("Error while constructing Metadata")
@@ -136,7 +146,11 @@ object cli {
       } yield v
     }
 
+    private def getAnnotation[T <: StaticAnnotation: ClassTag](annotations: Seq[Any]): Option[String] =
+      annotations.collectFirst { case a: T => a.toString }
+
     @implicitNotFound("Cannot derive CliParser for sealed trait")
     private sealed trait Dispatchable[T]
+    def dispatch[T: Dispatchable](sealedTrait: SealedTrait[Typeclass, T]): CliParser[T] = ???
   }
 }
