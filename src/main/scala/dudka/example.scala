@@ -20,6 +20,7 @@ object Example {
                        lng: Long,
                        dbl: Double,
                        opt: Option[String],
+                       @separator(",") lst: Seq[Int], // separator should be specified
                        dflt: Int = 45
                      )
 
