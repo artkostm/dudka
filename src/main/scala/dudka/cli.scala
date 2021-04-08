@@ -25,6 +25,10 @@ object cli {
     def canHaveArgs: Boolean = true
   }
 
+  final case class Secret(value: String) {
+    override def toString: String = "Secret(***)"
+  }
+  
   final case class Meta(longName: String, description: String, default: Option[Any], separator: Option[String])
 
   class separator(separator: String) extends StaticAnnotation with Serializable {
@@ -118,6 +122,14 @@ object cli {
         (s, m) =>
           Try(LocalDateTime.parse(s, DateTimeFormatter.ISO_LOCAL_DATE_TIME)).toEither.left
             .map(t => s"Cannot parse cli for ${m.longName}[${m.description}]: $t")
+      )
+    
+    implicit val _secret: CliParser[Secret] =
+      right[Secret](
+        (s, m) =>
+          // s - name of the secret, SecuredPropertiesUtils.getKeyVaultSecretOrPlainString - any implementation, for example based on Databricks Utils
+          Try(SecuredPropertiesUtils.getKeyVaultSecretOrPlainString(s)).toEither.left
+            .map(t => s"Cannot get secret cli for ${m.longName}${printDescription(m)}: $t").map(Secret)
       )
 
     implicit def _option[A: CliParser]: CliParser[Option[A]] = { (value, meta) =>
