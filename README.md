@@ -7,7 +7,7 @@
  1. Create a case class describing your cli params:
  
  ```scala
- import package com.petrofac.data.common.cli._
+ import package dudka.cli._
  case class TestArgs(
                        @doc("the very first cli param") first: String,
                        @name.long("seconnnd") second: String,
@@ -28,7 +28,7 @@
   2. In your main method, write the code below to convert cli arguments to an instance of case class from #1
 
 ```scala
-  import com.petrofac.data.common.cli._
+  import dudka.cli._
   import CliParserDerivation._
   val instanceOfCaseClass = parseCli[TestArgs](args).fold(e => throw new RuntimeException(e), identity)
   ...
