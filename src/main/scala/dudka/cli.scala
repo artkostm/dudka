@@ -151,9 +151,7 @@ object cli {
         m       <- meta.toRight("Error while constructing Metadata")
         default = m.default.map(_.asInstanceOf[I])
         v <- value.headOption
-              .map(
-                f(_, m).left.flatMap(e => default.toRight(e)) // todo: remove default ???
-              )
+              .map(f(_, m))
               .getOrElse(default.toRight(s"No cli param for ${m.longName}[${m.description}]"))
       } yield v
     }
